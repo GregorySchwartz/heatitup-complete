@@ -1,0 +1,50 @@
+name:                find-duplication-complete
+version:             0.4.3.0
+synopsis:            Find duplications in a sequence with assembly
+description:         Please see README.md
+homepage:            http://github.com/GregorySchwartz/find-duplication-complete#readme
+license:             GPL-3
+license-file:        LICENSE
+author:              Gregory W. Schwartz
+maintainer:          gsch@mail.med.upenn.edu
+copyright:           Copyright: (c) 2017 Gregory W. Schwartz
+category:            Bioinformatics
+build-type:          Simple
+-- extra-source-files:
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Types
+                     , Utility
+                     , Parse
+                     , Merge
+  build-depends:       base >= 4.7 && < 5
+                     , bytestring
+                     , cassava
+                     , containers
+                     , lens
+                     , text
+                     , text-show
+                     , vector
+  ghc-options:         -O2
+  default-language:    Haskell2010
+
+executable find-duplication-complete
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -O2
+  build-depends:       base
+                     , find-duplication-complete
+                     , bytestring
+                     , cassava
+                     , foldl
+                     , optparse-applicative
+                     , text
+                     , turtle
+                     , vector
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/GregorySchwartz/find-duplication-complete
