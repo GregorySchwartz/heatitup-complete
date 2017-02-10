@@ -4,11 +4,13 @@ Gregory W. Schwartz
 Collects the functions pertaining to utility helper functions.
 -}
 
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Utility
     ( findWithError
     , bamToFasta
+    , appendHeader
     ) where
 
 -- Standard
@@ -18,6 +20,7 @@ import qualified Data.Map.Strict as Map
 
 -- Cabal
 import qualified Data.Text as T
+import Turtle.Line
 
 -- Local
 import Types
@@ -37,3 +40,10 @@ bamToFasta fileHeader headers (BamRow row) = [">" <> header, row !! 9]
              , Just (row !! 3)
              , fmap unHeaders headers
              ]
+
+-- | Append a header to the end of the header line in a fasta row.
+appendHeader :: Maybe Headers -> Line -> Line
+appendHeader Nothing row                              = row
+appendHeader (Just (Headers h)) row@((T.take 1 . lineToText) -> ">") =
+    unsafeTextToLine $ lineToText row <> "|" <> h
+appendHeader _ row                                    = row

@@ -258,13 +258,17 @@ options = Options
           ( O.long "header"
          <> O.short 'H'
          <> O.metavar "[Nothing] | STRING"
-         <> O.help "The headers used when converting bam to fasta for\
-                   \ paired end non-assembly based duplication finding.\
-                   \ The order in the resulting header is\
-                   \ \">FILE|ACCESSION|POSITION|HEADER\", so take that order\
+         <> O.help "The headers used when converting bam to fasta.\
+                   \ For Assembly, the order in the resulting header is, for example\
+                   \ \"TRINITY_DN1000|c115_g5_i1 len=247 path=[31015:0-148 23018:149-246]|HEADER\".\
+                   \ For NonAssembly, the order in the resulting header is\
+                   \ \">FILE|ACCESSION|POSITION|HEADER\". So take that order\
                    \ into account for field options with positions and the\
                    \ rest. Also, make sure this string has fields separated by\
-                   \ a pipe \"|\" character."
+                   \ a pipe \"|\" character. So if you have HEADER as the\
+                   \ \"ENSE00000SOMETHING\" reference accession that\
+                   \ agrees with --input-reference, in Assembly that would be\
+                   \ field 3 while in NonAssembly that would be field 4."
           )
         )
 
@@ -371,7 +375,7 @@ assembly opts = sh $ do
     liftIO . runTrinity opts $ tempDir
     trinityFastaFile <-
         fold (find (has "/Trinity" <> suffix ".fasta") tempDir) Fold.head
-    
+
     unless
         (isNothing trinityFastaFile)
         . runAbundance opts tempDir . fromJust $ trinityFastaFile
@@ -397,7 +401,7 @@ assembly opts = sh $ do
                     $ newRows
 
     liftIO . B.putStrLn $ finalOutput
-    
+
 -- | Remove rows where the duplication contains the filler.
 removeFillDups :: Fill -> WithHeader Line -> Maybe Line
 removeFillDups _ (Header x)  = Just x
