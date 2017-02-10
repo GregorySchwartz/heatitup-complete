@@ -24,6 +24,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Options.Applicative as O
 import Turtle
+import Turtle.Line
 
 -- Local
 import Types
@@ -199,7 +200,7 @@ options = Options
       <*> O.option O.auto
           ( O.long "type"
          <> O.short 'P'
-         <> O.metavar "Assembly | NonAssembly"
+         <> O.metavar "Assembly | NonAssembly CHAR"
          <> O.help "The type of preprocessing before duplication finding.\
                    \ Assembly would be used on exome sequencing, RNA-seq, etc.\
                    \ while NonAssembly would be for certain paired end\
@@ -207,7 +208,11 @@ options = Options
                    \ fragmented across a location (Assembly) or are they\
                    \ all piled up (NonAssembly)? Paired end is required for\
                    \ NonAssembly, otherwise just use the duplication finding\
-                   \ program directly on the reads for best results."
+                   \ program directly on the reads for best results.\
+                   \ NonAssembly additionally requires a character to use as\
+                   \ filler between non-overlapping mate pairs, as the\
+                   \ program will remove duplications containing that\
+                   \ character. Input would look like \"NonAssembly 'X'\"."
           )
       <*> O.strOption
           ( O.long "trinity-command"
@@ -222,11 +227,13 @@ options = Options
          <> O.metavar "[--genome_guided_max_intron 10000\
                       \ --max_memory 10G\
                       \ --full_cleanup\
+                      \ --no_version_check\
                       \ --genome_guided_bam]\
                       \ | PATH"
          <> O.value "--genome_guided_max_intron 10000\
                     \ --max_memory 10G\
                     \ --full_cleanup\
+                    \ --no_version_check\
                     \ --genome_guided_bam"
          <> O.help "The arguments used for Trinity.\
                  \ Defaults to genome guided bams. Make sure the input argument\
@@ -284,7 +291,7 @@ runSamtools opts tempFasta = do
                         Turtle.output tempFasta
                             . inproc "samtools" ["fasta", inputFile]
                             $ mempty
-                        return . format fp $ tempFasta
+                        return . head . textToLines . format fp $ tempFasta
                     else
                         return inputFile
 
@@ -313,14 +320,15 @@ runAbundance opts tempDir trinityFastaFile = do
     return ()
 
 -- | Find duplications in the Trinity output.
-runFindDuplication :: Options -> Turtle.FilePath -> Shell T.Text
-runFindDuplication opts file = strict $ do
-    let commandList =
-          fmap T.pack
+runFindDuplication :: Options -> Shell Line -> Shell Line
+runFindDuplication opts streamIn =
+    inproc "find-duplication" commandList streamIn
+  where
+    commandList =
+        fmap T.pack
             . concat
             . catMaybes
-            $ [ Just ["--input", T.unpack . format fp $ file]
-              , fmap (("--reference-input" :) . (:[])) . refInput $ opts
+            $ [ fmap (("--reference-input" :) . (:[])) . refInput $ opts
               , fmap (("--blacklist-input" :) . (:[])) . blacklistInput $ opts
               , fmap (("--output" :) . (:[])) . Main.output $ opts
               , fmap (("--output-plot" :) . (:[])) . outputPlot $ opts
@@ -339,20 +347,20 @@ runFindDuplication opts file = strict $ do
               , Just ["--min-richness", show . minRichness $ opts]
               ]
 
-    inproc "find-duplication" commandList $ mempty
 
 -- | Cleanup the intermediate files.
 cleanup :: Options -> Shell ()
 cleanup opts = sh $ do
-    removable <- fold
-                    ( grep (has . text $ T.pack (Main.input opts) <> ".")
-                    . fmap (format fp)
-                    . ls
-                    $ "."
-                    )
-                    Fold.list
+    removable <-
+        fold ( grep (has . text $ T.pack (Main.input opts) <> ".")
+             . join
+             . fmap (select . textToLines . format fp)
+             . ls
+             $ "."
+             )
+             Fold.list
 
-    mapM_ rm . fmap fromText $ removable
+    mapM_ (rm . fromText . lineToText) removable
 
     return ()
 
@@ -361,14 +369,21 @@ assembly opts = sh $ do
     tempDir <- mktempdir "." "trinity"
 
     liftIO . runTrinity opts $ tempDir
-    trinityFastaFile <- fmap (fromMaybe (error "No Trinity fasta file."))
-                      . fold (find (has "/Trinity" <> suffix ".fasta") tempDir)
-                      $ Fold.head
-    runAbundance opts tempDir trinityFastaFile
+    trinityFastaFile <-
+        fold (find (has "/Trinity" <> suffix ".fasta") tempDir) Fold.head
+    
+    unless
+        (isNothing trinityFastaFile)
+        . runAbundance opts tempDir . fromJust $ trinityFastaFile
 
-    abundances        <- strict . Turtle.input $ tempDir </> "abundance.tsv"
-    duplicationOutput <-
-        strict . runFindDuplication opts $ trinityFastaFile
+    abundances        <-
+        strict
+            . maybe mempty (Turtle.input . const (tempDir </> "abundance.tsv"))
+            $ trinityFastaFile
+    duplicationOutput <- strict
+                       . runFindDuplication opts
+                       . maybe mempty Turtle.input
+                       $ trinityFastaFile
 
     unless (dirtyFlag opts) . cleanup $ opts
 
@@ -382,9 +397,24 @@ assembly opts = sh $ do
                     $ newRows
 
     liftIO . B.putStrLn $ finalOutput
+    
+-- | Remove rows where the duplication contains the filler.
+removeFillDups :: Fill -> WithHeader Line -> Maybe Line
+removeFillDups _ (Header x)  = Just x
+removeFillDups (Fill fill) (Row h row) =
+    if T.isInfixOf (T.singleton fill)
+        . fromMaybe (error "dSubstring column not found.")
+        . lookup "dSubstring"
+        . zip (getCols h)
+        . getCols
+        $ row
+        then Nothing
+        else Just row
+  where
+    getCols = T.splitOn "," . lineToText
 
-nonAssembly :: Options -> IO ()
-nonAssembly opts = sh $ do
+nonAssembly :: Options -> Fill -> IO ()
+nonAssembly opts fill = sh $ do
     bamOutput <- strict
                . inproc "samtools" ["view", "-"] -- No headers
                . inproc "samtools" [ "sort"
@@ -393,25 +423,29 @@ nonAssembly opts = sh $ do
                                    , T.pack $ Main.input opts
                                    ]
                $ mempty
-               
+
     let bamRows     = parseBAM . B.pack . T.unpack $ bamOutput
-        mergedMates = mergeMates bamRows
+        mergedMates = mergeMates fill bamRows
         fastaOutput = select
+                    . concatMap textToLines
                     . concatMap ( bamToFasta
                                   (T.pack $ Main.input opts)
                                   (fmap (Headers . T.pack) . headers $ opts)
                                 )
                     $ mergedMates
 
-    fastaFile <- mktempfile "." "temp"
-
-    Turtle.output fastaFile fastaOutput
-    
-    stdout . runFindDuplication opts $ fastaFile
+    stdout
+        . fmap fromJust
+        . mfilter isJust
+        . fmap (removeFillDups fill)
+        . header
+        . runFindDuplication opts
+        $ fastaOutput
 
 mainFunc :: Options -> IO ()
-mainFunc opts@(preprocessType -> Assembly)    = assembly opts
-mainFunc opts@(preprocessType -> NonAssembly) = nonAssembly opts
+mainFunc opts@(preprocessType -> Assembly)         = assembly opts
+mainFunc opts@(preprocessType -> NonAssembly fill) =
+    nonAssembly opts (Fill fill)
 
 main :: IO ()
 main = O.execParser opts >>= mainFunc

@@ -17,11 +17,18 @@ import qualified Data.Text as T
 
 
 -- Algebraic
-data Preprocess = Assembly | NonAssembly deriving (Read, Show)
+data Preprocess = Assembly | NonAssembly Char deriving (Read, Show)
 
 -- Basic
-newtype Position = Position { unPosition :: Int } deriving (Show)
-newtype Sequence = Sequence { unSequence :: T.Text } deriving (Show)
+newtype Position = Position
+    { unPosition :: Int
+    } deriving (Show)
+newtype Sequence = Sequence
+    { unSequence :: T.Text
+    } deriving (Show)
+newtype Fill = Fill
+    { unFill :: Char
+    } deriving (Show)
 
 -- Advanced
 newtype BamRow = BamRow
