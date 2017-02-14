@@ -32,28 +32,30 @@ import Parse
 import Merge
 
 -- | Command line arguments
-data Options = Options { input            :: String
-                       , refInput         :: Maybe String
-                       , blacklistInput   :: Maybe String
-                       , output           :: Maybe String
-                       , outputPlot       :: Maybe String
-                       , outputLabel      :: String
-                       , refField         :: Int
-                       , posField         :: Maybe Int
-                       , minSize          :: Int
-                       , gaussWindow      :: Int
-                       , gaussTime        :: Double
-                       , gaussThreshold   :: Double
-                       , minMut           :: Maybe Int
-                       , distance         :: Int
-                       , refBlacklistFlag :: Bool
-                       , minRichness      :: Int
-                       , preprocessType   :: Preprocess
-                       , trinityCommand   :: String
-                       , trinityArgs      :: String
-                       , trinityAbundance :: String
-                       , dirtyFlag        :: Bool
-                       , headers          :: Maybe String
+data Options = Options { input                 :: String
+                       , spacerFlag            :: Bool
+                       , refInput              :: Maybe String
+                       , blacklistInput        :: Maybe String
+                       , output                :: Maybe String
+                       , outputPlot            :: Maybe String
+                       , outputLabel           :: String
+                       , refField              :: Int
+                       , posField              :: Maybe Int
+                       , inputMinSize          :: Int
+                       , gaussWindow           :: Int
+                       , gaussTime             :: Double
+                       , gaussThreshold        :: Double
+                       , inputMinMut           :: Maybe Int
+                       , inputDistance         :: Int
+                       , refCheckBlacklistFlag :: Bool
+                       , refRecBlacklistFlag   :: Bool
+                       , minRichness           :: Int
+                       , preprocessType        :: Preprocess
+                       , trinityCommand        :: String
+                       , trinityArgs           :: String
+                       , trinityAbundance      :: String
+                       , dirtyFlag             :: Bool
+                       , headers               :: Maybe String
                        }
 
 -- | Command line options
@@ -64,6 +66,13 @@ options = Options
          <> O.short 'i'
          <> O.metavar "FILE"
          <> O.help "The input file"
+          )
+      <*> O.switch
+          ( O.long "spacer"
+         <> O.short 's'
+         <> O.help "Whether to characterize the spacer. Requires\
+                   \ reference-input and matching labels for the input and\
+                   \ reference-input to compare."
           )
       <*> O.optional ( O.strOption
           ( O.long "reference-input"
@@ -113,14 +122,16 @@ options = Options
          <> O.metavar "[1] | INT"
          <> O.value 1
          <> O.help "The field in each input header that contains the reference\
-                 \ accession number to compare to."
+                   \ accession number to compare to. Results in an out of bounds\
+                   \ if this field does not exist."
           )
       <*> O.optional ( O.option O.auto
           ( O.long "position-field"
          <> O.short 'p'
          <> O.metavar "[Nothing] | INT"
          <> O.help "The field in each input header that contains the starting\
-                 \ position of the read. Added to the annotations."
+                   \ position of the read. Added to the annotations. Results\
+                   \ in out of bounds if this field does not exist."
           )
         )
       <*> O.option O.auto
@@ -174,24 +185,32 @@ options = Options
                  \ in --blacklist-input"
           )
       <*> O.switch
-          ( O.long "reference-blacklist"
-         <> O.short 'r'
+          ( O.long "reference-check-blacklist"
+         <> O.short 'c'
          <> O.help "Whether to use the reference as a blacklist in addition to\
-                 \ the supplied blacklist. That is, the reference sequences\
-                 \ are inputed with the same parameters (except distance, which\
-                 \ here is 0)\
-                 \ to the duplication finder, and those duplications found are\
-                 \ added to the blacklist. This process is recursive, executed\
-                 \ until no more duplications are found in the reference.\
-                 \ Beware, too many blacklist entries can slow down the finder\
-                 \ significantly, as each blacklist entry is compared with each\
-                 \ candidate."
+                   \ the supplied blacklist. That is, we check if the duplication\
+                   \ can be found twice or more in the reference input."
+          )
+      <*> O.switch
+          ( O.long "reference-recursive-blacklist"
+         <> O.short 'r'
+         <> O.help "Whether to use the reference as a recursive\
+                   \ blacklist in addition to\
+                   \ the supplied blacklist. That is, the reference sequences\
+                   \ are inputed with the same parameters (except distance, which\
+                   \ here is 0)\
+                   \ to the duplication finder, and those duplications found are\
+                   \ added to the blacklist. This process is recursive, executed\
+                   \ until no more duplications are found in the reference.\
+                   \ Beware, too many blacklist entries can slow down the finder\
+                   \ significantly, as each blacklist entry is compared with each\
+                   \ candidate."
           )
       <*> O.option O.auto
           ( O.long "min-richness"
          <> O.short 'R'
          <> O.metavar "[1] | INT"
-         <> O.value 0
+         <> O.value 1
          <> O.help "The minimum nucleotide richness (number of different types of\
                  \ nucleotides) allowed in the duplication to be considered\
                  \ real. Useful if the user knows that a sequence like\
@@ -333,20 +352,24 @@ runFindDuplication opts streamIn =
             . concat
             . catMaybes
             $ [ fmap (("--reference-input" :) . (:[])) . refInput $ opts
+              , bool Nothing (Just ["--spacer"]) . spacerFlag $ opts
               , fmap (("--blacklist-input" :) . (:[])) . blacklistInput $ opts
               , fmap (("--output" :) . (:[])) . Main.output $ opts
               , fmap (("--output-plot" :) . (:[])) . outputPlot $ opts
               , Just ["--label", outputLabel opts]
               , Just ["--reference-field", show . refField $ opts]
               , fmap (("--position-field" :) . (:[]) . show) . posField $ opts
-              , Just ["--min-size", show . minSize $ opts]
+              , Just ["--min-size", show . inputMinSize $ opts]
               , Just ["--gaussian-window", show . gaussWindow $ opts]
               , Just ["--gaussian-time", show . gaussTime $ opts]
               , Just ["--gaussian-threshold", show . gaussThreshold $ opts]
-              , fmap (("--min-mutations" :) . (:[]) . show) . minMut $ opts
-              , Just ["--levenshtein-distance", show . distance $ opts]
-              , bool Nothing (Just ["--reference-blacklist"])
-              . refBlacklistFlag
+              , fmap (("--min-mutations" :) . (:[]) . show) . inputMinMut $ opts
+              , Just ["--levenshtein-distance", show . inputDistance $ opts]
+              , bool Nothing (Just ["--reference-check-blacklist"])
+              . refCheckBlacklistFlag
+              $ opts
+              , bool Nothing (Just ["--reference-recursive-blacklist"])
+              . refRecBlacklistFlag
               $ opts
               , Just ["--min-richness", show . minRichness $ opts]
               ]
