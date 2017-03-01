@@ -18,6 +18,7 @@ import qualified Data.Text as T
 
 -- Algebraic
 data Preprocess = Assembly | NonAssembly Char deriving (Read, Show)
+data TrinityArgs = TrinityBase | TrinityGenome | TrinityCustom String deriving (Read, Show)
 
 -- Basic
 newtype Position = Position

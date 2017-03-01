@@ -52,7 +52,7 @@ data Options = Options { input                 :: String
                        , minRichness           :: Int
                        , preprocessType        :: Preprocess
                        , trinityCommand        :: String
-                       , trinityArgs           :: String
+                       , trinityArgs           :: TrinityArgs
                        , trinityAbundance      :: String
                        , dirtyFlag             :: Bool
                        , headers               :: Maybe String
@@ -240,22 +240,16 @@ options = Options
          <> O.value "Trinity"
          <> O.help "The command used for Trinity. Useful if not in path."
           )
-      <*> O.strOption
+      <*> O.option O.auto
           ( O.long "trinity-args"
          <> O.short 'C'
-         <> O.metavar "[--genome_guided_max_intron 10000\
-                      \ --max_memory 10G\
-                      \ --full_cleanup\
-                      \ --no_version_check\
-                      \ --genome_guided_bam]\
-                      \ | PATH"
-         <> O.value "--genome_guided_max_intron 10000\
-                    \ --max_memory 10G\
-                    \ --full_cleanup\
-                    \ --no_version_check\
-                    \ --genome_guided_bam"
+         <> O.metavar "[TrinityBase] | TrinityGenome | TrinityCustom STRING"
+         <> O.value TrinityBase
          <> O.help "The arguments used for Trinity.\
-                 \ Defaults to genome guided bams. Make sure the input argument\
+                 \ TrinityBase is --seqType fq --run_as_paired --max_memory 10G --no_version_check --single,\
+                 \ TrinityGenome is --genome_guided_max_intron 10000 --max_memory 10G --no_version_check --genome_guided_bam,\
+                 \ and TrinityCustom STRING is STRING.\
+                 \ Make sure the input argument\
                  \ is last and points to nothing (like in the default)."
           )
       <*> O.strOption
@@ -291,16 +285,30 @@ options = Options
           )
         )
 
+-- | Get the Trinity arguments.
+defTrinityArgs :: TrinityArgs -> T.Text
+defTrinityArgs TrinityBase       = T.pack "--seqType fq\
+                                          \ --run_as_paired\
+                                          \ --max_memory 10G\
+                                          \ --no_version_check\
+                                          \ --single"
+defTrinityArgs TrinityGenome     = T.pack "--genome_guided_max_intron 10000\
+                                          \ --max_memory 10G\
+                                          \ --no_version_check\
+                                          \ --genome_guided_bam"
+defTrinityArgs (TrinityCustom x) = T.pack x
+
 -- | Run the trinity command.
-runTrinity :: Options -> Turtle.FilePath -> IO ()
-runTrinity opts tempDir = do
-    let modifiedArgs = (T.words .  T.pack $ trinityArgs opts)
-                    <> [ T.pack . Main.input $ opts
+runTrinity :: Options -> Turtle.FilePath -> Turtle.FilePath -> IO ()
+runTrinity opts tempFile tempDir = do
+    let modifiedArgs = (T.words .  defTrinityArgs . trinityArgs $ opts)
+                    <> [ format fp tempFile
                        , "--output"
                        , format fp tempDir
                        ]
 
     stderr . inproc (T.pack $ trinityCommand opts) modifiedArgs $ mempty
+    xs <- view (ls ".")
 
     return ()
 
@@ -308,17 +316,20 @@ runTrinity opts tempDir = do
 runSamtools :: Options -> Turtle.FilePath -> IO Turtle.FilePath
 runSamtools opts tempFasta = do
     let inputFile = T.pack . Main.input $ opts
+        outputType = case preprocessType opts of
+                        Assembly        -> "fastq"
+                        (NonAssembly _) -> "fasta"
 
-    fastaFile <- if hasExtension (fromText inputFile) "bam"
+    fastFile <- if hasExtension (fromText inputFile) "bam"
                     then strict $ do
                         Turtle.output tempFasta
-                            . inproc "samtools" ["fasta", inputFile]
+                            . inproc "samtools" [outputType, inputFile]
                             $ mempty
                         return . head . textToLines . format fp $ tempFasta
                     else
                         return inputFile
 
-    return . fromText $ fastaFile
+    return . fromText . T.strip $ fastFile
 
 -- | Run the RSEM abundance command.
 runAbundance :: Options -> Turtle.FilePath -> Turtle.FilePath -> Shell ()
@@ -334,6 +345,7 @@ runAbundance opts tempDir trinityFastaFile = do
             , "--seqType", "fa"
             , "--single", format fp inputFasta
             , "--est_method", "kallisto"
+            , "--kallisto_add_opts", "--pseudobam"
             , "--trinity_mode"
             , "--prep_reference"
             , "--output_dir", format fp tempDir
@@ -378,7 +390,7 @@ runFindDuplication opts streamIn =
 -- | Cleanup the intermediate files.
 cleanup :: Options -> Shell ()
 cleanup opts = sh $ do
-    removable <-
+    removableHere <-
         fold ( grep (has . text $ T.pack (Main.input opts) <> ".")
              . join
              . fmap (select . textToLines . format fp)
@@ -386,16 +398,36 @@ cleanup opts = sh $ do
              $ "."
              )
              Fold.list
+    removableThere <-
+        fold ( grep (has . text $ T.pack (Main.input opts) <> ".")
+             . join
+             . fmap (select . textToLines . format fp)
+             . ls
+             . directory
+             . fromText
+             . T.pack
+             . Main.input
+             $ opts
+             )
+             Fold.list
 
-    mapM_ (rm . fromText . lineToText) removable
+    mapM_ (rm . fromText . lineToText) $ removableHere <> removableThere
 
     return ()
 
 assembly :: Options -> IO ()
 assembly opts = sh $ do
-    tempDir <- mktempdir "." "trinity"
+    tempDir  <- mktempdir "." "trinity"
+    tempFile' <- mktempfile "." "tmp.fq"
+    tempFile <-
+        case trinityArgs opts of
+            TrinityBase       -> liftIO . runSamtools opts $ tempFile'
+            TrinityGenome     ->
+                return . fromText . T.pack . Main.input $ opts
+            (TrinityCustom _) ->
+                return . fromText . T.pack . Main.input $ opts
 
-    liftIO . runTrinity opts $ tempDir
+    liftIO . runTrinity opts tempFile $ tempDir
     trinityFastaFile <-
         fold (find (has "/Trinity" <> suffix ".fasta") tempDir) Fold.head
 
