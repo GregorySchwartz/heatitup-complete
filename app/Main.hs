@@ -347,7 +347,7 @@ runSamtools opts tempFasta = do
 
     return . fromText . T.strip $ fastFile
 
--- | Run the RSEM abundance command.
+-- | Run the abundance command.
 runAlignContig :: Options -> Turtle.FilePath -> Turtle.FilePath -> Shell Line
 runAlignContig opts tempDir trinityFastaFile = do
     tempFasta <- mktempfile tempDir "trinity.fasta"
@@ -376,16 +376,20 @@ runAlignContig opts tempDir trinityFastaFile = do
                    ]
                $ mempty
 
-    let bamRows = fmap (BamRow . T.splitOn "\t") . T.lines $ bamOutput
+    let bamRows  = fmap (BamRow . T.splitOn "\t") . T.lines $ bamOutput
+        matchMap = getMatchMap bamRows
 
     select
-        . concatMap
-               ( concatMap textToLines
-               . bamToFasta
-                  (Just fastaMap)
-                  (T.pack $ Main.input opts)
-                  (fmap (Headers . T.pack) . headers $ opts)
-               )
+        . concatMap textToLines
+        . concat
+        . nub'
+        . fmap
+            ( bamToFasta
+                (Just fastaMap)
+                (Just matchMap)
+                (T.pack $ Main.input opts)
+                (fmap (Headers . T.pack) . headers $ opts)
+            )
         $ bamRows
 
 -- | Find duplications in the Trinity output.
@@ -470,24 +474,31 @@ assembly opts = sh $ do
             then error "Fasta not generated."
             else return ()
 
-    stdout
-        . runFindDuplication opts
-        . runAlignContig opts tempDir
-        . fromJust
-        $ trinityFastaFile
+    duplicationOutput <- strict
+                       . runFindDuplication opts
+                       . runAlignContig opts tempDir
+                       . fromJust
+                       $ trinityFastaFile
 
     unless (dirtyFlag opts) . cleanup $ opts
 
-    -- let abundanceMap         = getAbundanceMap . B.pack . T.unpack $ abundances
-    --     frequencyMap         = getFrequencyMap abundanceMap
-    --     (dupHeader, dupRows) =
-    --         parseDuplications . B.pack . T.unpack $ duplicationOutput
-    --     newRows = fmap (mergeAbundance frequencyMap) dupRows
-    --     finalOutput = CSV.encodeByName (V.snoc dupHeader "frequency")
-    --                 . fmap unDuplicationRow
-    --                 $ newRows
+    abundances        <-
+        strict
+            . maybe mempty (Turtle.input . const (tempDir </> "abundance.tsv"))
+            $ trinityFastaFile
 
-    --liftIO . B.putStrLn $ finalOutput
+    unless (dirtyFlag opts) . cleanup $ opts
+
+    let abundanceMap         = getAbundanceMap . B.pack . T.unpack $ abundances
+        frequencyMap         = getFrequencyMap abundanceMap
+        (dupHeader, dupRows) =
+            parseDuplications . B.pack . T.unpack $ duplicationOutput
+        newRows = fmap (mergeAbundance frequencyMap) dupRows
+        finalOutput = CSV.encodeByName (V.snoc dupHeader "frequency")
+                    . fmap unDuplicationRow
+                    $ newRows
+
+    liftIO . B.putStrLn $ finalOutput
 
 -- | Remove rows where the duplication contains the filler.
 removeFillDups :: Fill -> WithHeader Line -> Maybe Line
@@ -520,9 +531,10 @@ nonAssembly opts fill = sh $ do
         fastaOutput = select
                     . concatMap textToLines
                     . concatMap ( bamToFasta
-                                  Nothing
-                                  (T.pack $ Main.input opts)
-                                  (fmap (Headers . T.pack) . headers $ opts)
+                                    Nothing
+                                    Nothing
+                                    (T.pack $ Main.input opts)
+                                    (fmap (Headers . T.pack) . headers $ opts)
                                 )
                     $ mergedMates
 

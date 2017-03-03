@@ -24,6 +24,7 @@ import qualified Data.Map.Strict as Map
 import Control.Lens
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
+import Safe
 import TextShow
 
 -- Local
@@ -36,7 +37,8 @@ mergeAbundance (FrequencyMap m) (DuplicationRow row) =
         . Map.insert "frequency" (showt . findWithError rowAccession $ m)
         $ row
   where
-    rowAccession = T.takeWhile (/= ' ') . findWithError "fHeader" $ row
+    rowAccession =
+        flip (Safe.at) 1 . T.splitOn "|" . findWithError "fHeader" $ row
 
 -- | Get the position map of a sequence.
 getPositionMap :: Position -> Sequence -> PositionMap
