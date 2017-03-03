@@ -50,3 +50,9 @@ newtype DuplicationRow = DuplicationRow
 newtype PositionMap = PositionMap
     { unPositionMap :: IMap.IntMap Char
     }
+newtype AccessionMap = AccessionMap
+    { unAccessionMap :: Map.Map T.Text T.Text
+    } deriving (Read, Show)
+newtype MatchMap = MatchMap
+    { unMatchMap :: Map.Map T.Text Bool
+    }

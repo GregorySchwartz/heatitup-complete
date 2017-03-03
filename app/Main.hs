@@ -17,6 +17,11 @@ import Data.Bool
 import Data.Maybe
 
 -- Cabal
+import Data.Fasta.Text
+import Pipes
+import qualified Pipes.Prelude as P
+import qualified Pipes.Text as PT
+import qualified Pipes.Text.IO as PT
 import qualified Control.Foldl as Fold
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Csv as CSV
@@ -30,6 +35,7 @@ import Turtle.Line
 import Types
 import Parse
 import Merge
+import Utility
 
 -- | Command line arguments
 data Options = Options { input                 :: String
@@ -41,6 +47,7 @@ data Options = Options { input                 :: String
                        , outputLabel           :: String
                        , refField              :: Int
                        , posField              :: Maybe Int
+                       , ignoreField           :: Maybe Int
                        , inputMinSize          :: Int
                        , gaussWindow           :: Int
                        , gaussTime             :: Double
@@ -132,6 +139,17 @@ options = Options
          <> O.help "The field in each input header that contains the starting\
                    \ position of the read. Added to the annotations. Results\
                    \ in out of bounds if this field does not exist."
+          )
+        )
+      <*> O.optional ( O.option O.auto
+          ( O.long "ignore-field"
+         <> O.short 'g'
+         <> O.metavar "[Nothing] | INT"
+         <> O.help "The field in each input header that contains a 0 or a 1:\
+                   \ 0 means to ignore this read (assign as Normal) and 1\
+                   \ means to find a duplication in this read.\
+                   \ Used for reads where there is known to be no duplication\
+                   \ and thus helps remove false positives."
           )
         )
       <*> O.option O.auto
@@ -272,16 +290,15 @@ options = Options
          <> O.short 'H'
          <> O.metavar "[Nothing] | STRING"
          <> O.help "The headers used when converting bam to fasta.\
-                   \ For Assembly, the order in the resulting header is, for example\
-                   \ \"TRINITY_DN1000|c115_g5_i1 len=247 path=[31015:0-148 23018:149-246]|HEADER\".\
-                   \ For NonAssembly, the order in the resulting header is\
-                   \ \">FILE|ACCESSION|POSITION|HEADER\". So take that order\
+                   \ The order in the resulting header is\
+                   \ \">FILE|ACCESSION|POSITION|IGNORE|HEADER\".\
+                   \ So take that order\
                    \ into account for field options with positions and the\
                    \ rest. Also, make sure this string has fields separated by\
                    \ a pipe \"|\" character. So if you have HEADER as the\
                    \ \"ENSE00000SOMETHING\" reference accession that\
-                   \ agrees with --input-reference, in Assembly that would be\
-                   \ field 3 while in NonAssembly that would be field 4."
+                   \ agrees with --input-reference, that would be\
+                   \ field 5."
           )
         )
 
@@ -308,7 +325,6 @@ runTrinity opts tempFile tempDir = do
                        ]
 
     stderr . inproc (T.pack $ trinityCommand opts) modifiedArgs $ mempty
-    xs <- view (ls ".")
 
     return ()
 
@@ -332,27 +348,45 @@ runSamtools opts tempFasta = do
     return . fromText . T.strip $ fastFile
 
 -- | Run the RSEM abundance command.
-runAbundance :: Options -> Turtle.FilePath -> Turtle.FilePath -> Shell ()
-runAbundance opts tempDir trinityFastaFile = do
+runAlignContig :: Options -> Turtle.FilePath -> Turtle.FilePath -> Shell Line
+runAlignContig opts tempDir trinityFastaFile = do
     tempFasta <- mktempfile tempDir "trinity.fasta"
 
     inputFasta <- liftIO . runSamtools opts $ tempFasta
+    fastaMap <-
+        fmap (fastaToMap ' ') -- Trinity outputs ' ' as a separator.
+            . liftIO
+            . PT.runSafeT
+            . runEffect
+            . P.toListM
+            $ pipesFasta (PT.readFile . T.unpack . format fp $ trinityFastaFile)
 
-    stderr
-        . inproc
-            (T.pack $ trinityAbundance opts)
-            [ "--transcripts", format fp trinityFastaFile
-            , "--seqType", "fa"
-            , "--single", format fp inputFasta
-            , "--est_method", "kallisto"
-            , "--kallisto_add_opts", "--pseudobam"
-            , "--trinity_mode"
-            , "--prep_reference"
-            , "--output_dir", format fp tempDir
-            ]
-        $ mempty
+    bamOutput <- strict
+               . inproc "samtools" ["view", "-F", "4", "-"] -- No headers and unmapped reads
+               . inproc
+                   (T.pack $ trinityAbundance opts)
+                   [ "--transcripts", format fp trinityFastaFile
+                   , "--seqType", "fa"
+                   , "--single", format fp inputFasta
+                   , "--est_method", "kallisto"
+                   , "--kallisto_add_opts", "--pseudobam"
+                   , "--trinity_mode"
+                   , "--prep_reference"
+                   , "--output_dir", format fp tempDir
+                   ]
+               $ mempty
 
-    return ()
+    let bamRows = fmap (BamRow . T.splitOn "\t") . T.lines $ bamOutput
+
+    select
+        . concatMap
+               ( concatMap textToLines
+               . bamToFasta
+                  (Just fastaMap)
+                  (T.pack $ Main.input opts)
+                  (fmap (Headers . T.pack) . headers $ opts)
+               )
+        $ bamRows
 
 -- | Find duplications in the Trinity output.
 runFindDuplication :: Options -> Shell Line -> Shell Line
@@ -371,6 +405,7 @@ runFindDuplication opts streamIn =
               , Just ["--label", outputLabel opts]
               , Just ["--reference-field", show . refField $ opts]
               , fmap (("--position-field" :) . (:[]) . show) . posField $ opts
+              , fmap (("--ignore-field" :) . (:[]) . show) . ignoreField $ opts
               , Just ["--min-size", show . inputMinSize $ opts]
               , Just ["--gaussian-window", show . gaussWindow $ opts]
               , Just ["--gaussian-time", show . gaussTime $ opts]
@@ -431,31 +466,28 @@ assembly opts = sh $ do
     trinityFastaFile <-
         fold (find (has "/Trinity" <> suffix ".fasta") tempDir) Fold.head
 
-    unless
-        (isNothing trinityFastaFile)
-        . runAbundance opts tempDir . fromJust $ trinityFastaFile
+    _ <- if isNothing trinityFastaFile
+            then error "Fasta not generated."
+            else return ()
 
-    abundances        <-
-        strict
-            . maybe mempty (Turtle.input . const (tempDir </> "abundance.tsv"))
-            $ trinityFastaFile
-    duplicationOutput <- strict
-                       . runFindDuplication opts
-                       . maybe mempty Turtle.input
-                       $ trinityFastaFile
+    stdout
+        . runFindDuplication opts
+        . runAlignContig opts tempDir
+        . fromJust
+        $ trinityFastaFile
 
     unless (dirtyFlag opts) . cleanup $ opts
 
-    let abundanceMap         = getAbundanceMap . B.pack . T.unpack $ abundances
-        frequencyMap         = getFrequencyMap abundanceMap
-        (dupHeader, dupRows) =
-            parseDuplications . B.pack . T.unpack $ duplicationOutput
-        newRows = fmap (mergeAbundance frequencyMap) dupRows
-        finalOutput = CSV.encodeByName (V.snoc dupHeader "frequency")
-                    . fmap unDuplicationRow
-                    $ newRows
+    -- let abundanceMap         = getAbundanceMap . B.pack . T.unpack $ abundances
+    --     frequencyMap         = getFrequencyMap abundanceMap
+    --     (dupHeader, dupRows) =
+    --         parseDuplications . B.pack . T.unpack $ duplicationOutput
+    --     newRows = fmap (mergeAbundance frequencyMap) dupRows
+    --     finalOutput = CSV.encodeByName (V.snoc dupHeader "frequency")
+    --                 . fmap unDuplicationRow
+    --                 $ newRows
 
-    liftIO . B.putStrLn $ finalOutput
+    --liftIO . B.putStrLn $ finalOutput
 
 -- | Remove rows where the duplication contains the filler.
 removeFillDups :: Fill -> WithHeader Line -> Maybe Line
@@ -483,11 +515,12 @@ nonAssembly opts fill = sh $ do
                                    ]
                $ mempty
 
-    let bamRows     = parseBAM . B.pack . T.unpack $ bamOutput
+    let bamRows     = parseBAM bamOutput
         mergedMates = mergeMates fill bamRows
         fastaOutput = select
                     . concatMap textToLines
                     . concatMap ( bamToFasta
+                                  Nothing
                                   (T.pack $ Main.input opts)
                                   (fmap (Headers . T.pack) . headers $ opts)
                                 )
@@ -497,7 +530,7 @@ nonAssembly opts fill = sh $ do
         . fmap fromJust
         . mfilter isJust
         . fmap (removeFillDups fill)
-        . header
+        . Turtle.header
         . runFindDuplication opts
         $ fastaOutput
 

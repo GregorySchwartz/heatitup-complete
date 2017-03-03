@@ -23,7 +23,9 @@ library
                      , bytestring
                      , cassava
                      , containers
+                     , fasta
                      , lens
+                     , safe
                      , text
                      , text-show
                      , turtle
@@ -39,8 +41,12 @@ executable find-duplication-complete
                      , find-duplication-complete
                      , bytestring
                      , cassava
+                     , fasta
                      , foldl
                      , optparse-applicative
+                     , pipes
+                     , pipes-text
+                     , safe
                      , text
                      , turtle
                      , vector
