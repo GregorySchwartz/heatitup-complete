@@ -9,9 +9,11 @@ module Types where
 -- Standard
 import qualified Data.IntMap.Strict as IMap
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 -- Cabal
 import qualified Data.Text as T
+import Turtle
 
 -- Local
 
@@ -19,6 +21,7 @@ import qualified Data.Text as T
 -- Algebraic
 data Preprocess = Assembly | NonAssembly Char deriving (Read, Show)
 data TrinityArgs = TrinityBase | TrinityGenome | TrinityCustom String deriving (Read, Show)
+data Query = QueryFile Turtle.FilePath | QueryShell (Shell Line)
 
 -- Basic
 newtype Position = Position
@@ -29,6 +32,15 @@ newtype Sequence = Sequence
     } deriving (Show)
 newtype Fill = Fill
     { unFill :: Char
+    } deriving (Show)
+newtype Command = Command
+    { unCommand :: T.Text
+    } deriving (Show)
+newtype Args = Args
+    { unArgs :: String
+    } deriving (Show)
+newtype Subject = Subject
+    { unSubject :: Turtle.FilePath
     } deriving (Show)
 
 -- Advanced
@@ -53,6 +65,12 @@ newtype PositionMap = PositionMap
 newtype AccessionMap = AccessionMap
     { unAccessionMap :: Map.Map T.Text T.Text
     } deriving (Read, Show)
+newtype BlastSet = BlastSet
+    { unBlastSet :: Set.Set T.Text
+    }
+newtype AccSet = AccSet
+    { unAccSet :: Set.Set T.Text
+    }
 newtype MatchMap = MatchMap
     { unMatchMap :: Map.Map T.Text Bool
     }

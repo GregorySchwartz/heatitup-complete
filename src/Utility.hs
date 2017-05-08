@@ -22,11 +22,12 @@ import Data.Bool
 import Data.Char
 import Data.Maybe
 import Data.Monoid
-import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Char8 as B
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 -- Cabal
+import qualified Control.Foldl as Fold
 import qualified Data.Text as T
 import Data.Fasta.Text
 import Safe

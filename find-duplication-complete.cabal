@@ -1,5 +1,5 @@
 name:                find-duplication-complete
-version:             0.5.1.0
+version:             0.5.2.0
 synopsis:            Find duplications in a sequence with assembly
 description:         Please see README.md
 homepage:            http://github.com/GregorySchwartz/find-duplication-complete#readme
@@ -19,11 +19,13 @@ library
                      , Utility
                      , Parse
                      , Merge
+                     , Blast
   build-depends:       base >= 4.7 && < 5
                      , bytestring
                      , cassava
                      , containers
                      , fasta
+                     , foldl
                      , lens
                      , safe
                      , text
@@ -41,6 +43,7 @@ executable find-duplication-complete
                      , find-duplication-complete
                      , bytestring
                      , cassava
+                     , containers
                      , fasta
                      , foldl
                      , optparse-applicative

@@ -15,6 +15,8 @@ module Main where
 -- Standard
 import Data.Bool
 import Data.Maybe
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 -- Cabal
 import Data.Fasta.Text
@@ -35,6 +37,7 @@ import Turtle.Line
 import Types
 import Parse
 import Merge
+import Blast
 import Utility
 
 -- | Command line arguments
@@ -58,10 +61,13 @@ data Options = Options { input                 :: String
                        , refRecBlacklistFlag   :: Bool
                        , minRichness           :: Int
                        , preprocessType        :: Preprocess
+                       , blastCommand          :: Maybe String
+                       , blastArgs             :: Maybe String
                        , trinityCommand        :: String
                        , trinityArgs           :: TrinityArgs
                        , trinityAbundance      :: String
                        , dirtyFlag             :: Bool
+                       , cigarFlag             :: Bool
                        , headers               :: Maybe String
                        }
 
@@ -251,16 +257,34 @@ options = Options
                    \ program will remove duplications containing that\
                    \ character. Input would look like \"NonAssembly 'X'\"."
           )
+      <*> O.optional ( O.strOption
+          ( O.long "blast-command"
+         <> O.short 'B'
+         <> O.metavar "[Nothing] | PATH"
+         <> O.help "The command used for blastn. Useful if not in path.\
+                   \ Used for filtering out reads from irrelevant locations.\
+                   \ If using small sequences, be sure to set blast-args\
+                   \ to \"-task blastn-short\"."
+          )
+        )
+      <*> O.optional ( O.strOption
+          ( O.long "blast-args"
+         <> O.short 'z'
+         <> O.metavar "[Nothing] | STRING"
+         <> O.help "The additional arguments used for blastn. Separated by space.\
+                   \ Use \"-task blastn-short\" for small sequences."
+          )
+        )
       <*> O.strOption
           ( O.long "trinity-command"
-         <> O.short 'c'
+         <> O.short 'C'
          <> O.metavar "[Trinity] | PATH"
          <> O.value "Trinity"
          <> O.help "The command used for Trinity. Useful if not in path."
           )
       <*> O.option O.auto
           ( O.long "trinity-args"
-         <> O.short 'C'
+         <> O.short 'A'
          <> O.metavar "[TrinityBase] | TrinityGenome | TrinityCustom STRING"
          <> O.value TrinityBase
          <> O.help "The arguments used for Trinity.\
@@ -284,6 +308,12 @@ options = Options
          <> O.short 'd'
          <> O.help "Leave behind the INPUT.* files at the end (but the trinity\
                    \ output is still deleted)."
+          )
+      <*> O.switch
+          ( O.long "cigar-filter"
+         <> O.short 'G'
+         <> O.help "Skip the CIGAR based filtering, that is, look at all reads\
+                   \ and not just reads without all M's in the CIGAR."
           )
       <*> O.optional ( O.strOption
           ( O.long "header"
@@ -376,8 +406,25 @@ runAlignContig opts tempDir trinityFastaFile = do
                    ]
                $ mempty
 
-    let bamRows  = fmap (BamRow . T.splitOn "\t") . T.lines $ bamOutput
-        matchMap = getMatchMap bamRows
+    let bamRows' = fmap (BamRow . T.splitOn "\t") . T.lines $ bamOutput
+
+    bamRows <- case blastCommand opts of
+                (Just cmd) -> filterBlastBamRows
+                                2
+                                (Command . T.pack $ cmd)
+                                (fmap Args . blastArgs $ opts)
+                                ( Subject
+                                . fromText
+                                . T.pack
+                                . fromMaybe (error "Need --reference-input for blast.")
+                                . refInput
+                                $ opts
+                                )
+                                (QueryFile trinityFastaFile)
+                                bamRows'
+                Nothing    -> return bamRows'
+
+    let matchMap = getMatchMap bamRows
 
     select
         . concatMap textToLines
@@ -386,7 +433,7 @@ runAlignContig opts tempDir trinityFastaFile = do
         . fmap
             ( bamToFasta
                 (Just fastaMap)
-                (Just matchMap)
+                (bool (Just matchMap) Nothing . cigarFlag $ opts)
                 (T.pack $ Main.input opts)
                 (fmap (Headers . T.pack) . headers $ opts)
             )
@@ -489,10 +536,16 @@ assembly opts = sh $ do
 
     unless (dirtyFlag opts) . cleanup $ opts
 
-    let abundanceMap         = getAbundanceMap . B.pack . T.unpack $ abundances
-        frequencyMap         = getFrequencyMap abundanceMap
+    let abundanceMap'        = getAbundanceMap . B.pack . T.unpack $ abundances
         (dupHeader, dupRows) =
             parseDuplications . B.pack . T.unpack $ duplicationOutput
+        accSet               = getAccSet dupRows
+        abundanceMap         = --We only want the frequency of valid contigs
+            AbundanceMap
+                . Map.filterWithKey (\k _ -> Set.member k . unAccSet $ accSet)
+                . unAbundanceMap
+                $ abundanceMap'
+        frequencyMap         = getFrequencyMap abundanceMap
         newRows = fmap (mergeAbundance frequencyMap) dupRows
         finalOutput = CSV.encodeByName (V.snoc dupHeader "frequency")
                     . fmap unDuplicationRow
@@ -526,8 +579,31 @@ nonAssembly opts fill = sh $ do
                                    ]
                $ mempty
 
-    let bamRows     = parseBAM bamOutput
-        mergedMates = mergeMates fill bamRows
+    let bamRows' = parseBAM bamOutput
+        query    = QueryShell
+                 . select
+                 . concatMap textToLines
+                 . concatMap blastBamToFasta
+                 $ bamRows'
+
+    -- Get rid of sequences that don't blast to the reference.
+    bamRows <- case blastCommand opts of
+                (Just cmd) -> filterBlastBamRows
+                                0
+                                (Command . T.pack $ cmd)
+                                (fmap Args . blastArgs $ opts)
+                                ( Subject
+                                . fromText
+                                . T.pack
+                                . fromMaybe (error "Need --reference-input for blast.")
+                                . refInput
+                                $ opts
+                                )
+                                query
+                                bamRows'
+                Nothing    -> return bamRows'
+
+    let mergedMates = mergeMates fill bamRows
         fastaOutput = select
                     . concatMap textToLines
                     . concatMap ( bamToFasta

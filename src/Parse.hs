@@ -10,6 +10,7 @@ Collects the functions pertaining to the parsing of the abundance output.
 module Parse
     ( getAbundanceMap
     , getFrequencyMap
+    , getAccSet
     , parseDuplications
     , parseBAM
     ) where
@@ -17,6 +18,7 @@ module Parse
 -- Standard
 import Data.Char
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 -- Cabal
 import Control.Lens
@@ -25,6 +27,7 @@ import Data.Text.Read
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import Safe
 
 -- Local
 import Types
@@ -52,6 +55,16 @@ getFrequencyMap (AbundanceMap m) = FrequencyMap . Map.map (/ totalCount) $ m
   where
     totalCount = Map.foldl (+) 0 m
 
+-- | Get the list of accessions from a duplication row post-Trinity.
+getAccSet :: [DuplicationRow] -> AccSet
+getAccSet = AccSet
+          . Set.fromList
+          . fmap ( flip (Safe.at) 1
+                 . T.splitOn "|"
+                 . findWithError "fHeader"
+                 . unDuplicationRow
+                 )
+    
 -- | Get the duplications in an easy to read format.
 parseDuplications :: B.ByteString -> (Header, [DuplicationRow])
 parseDuplications =
