@@ -1,5 +1,5 @@
 name:                find-duplication-complete
-version:             0.5.2.0
+version:             0.5.2.1
 synopsis:            Find duplications in a sequence with assembly
 description:         Please see README.md
 homepage:            http://github.com/GregorySchwartz/find-duplication-complete#readme

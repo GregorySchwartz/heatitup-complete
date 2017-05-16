@@ -15,6 +15,7 @@ module Utility
     , fastaToMap
     , getMatchMap
     , nub'
+    , decodeSAMFlag
     ) where
 
 -- Standard
@@ -22,6 +23,7 @@ import Data.Bool
 import Data.Char
 import Data.Maybe
 import Data.Monoid
+import Numeric
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -97,3 +99,7 @@ lookupErr k = fromMaybe (error $ "Cannot find: " <> (show k)) . Map.lookup k
 -- | Better nub.
 nub' :: (Eq a, Ord a) => [a] -> [a]
 nub' = Set.toList . Set.fromList
+
+-- | Decode a SAM flag into the bit representation (as a string).
+decodeSAMFlag :: Int -> String
+decodeSAMFlag x = showIntAtBase 2 intToDigit x ""

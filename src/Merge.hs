@@ -16,6 +16,7 @@ module Merge
 -- Standard
 import Data.Function (on)
 import Data.List
+import Data.Maybe
 import Data.Monoid
 import qualified Data.IntMap.Strict as IMap
 import qualified Data.Map.Strict as Map
@@ -83,24 +84,30 @@ mergeSequences fill left =
         . uncurry getPositionMap
 
 -- | Merge a mate pair. Assumes that the lines are sorted by mate pair already
--- (samtools sort -n). Also assumes that the left mate appears first.
-mergePair :: Fill -> [BamRow] -> BamRow
-mergePair _ []  = error "Empty grouping. Impossible if used with mergeMates\
-                      \ unless the input is empty."
-mergePair _ [x] = x
-mergePair fill [BamRow left, BamRow right] =
-    BamRow
-        . set (ix 9) ( unSequence
-                     $ mergeSequences fill (posSeq left) (posSeq right)
-                     )
-        $ left
+-- (samtools sort -n). Also assumes that the left mate appears first. Removes
+-- supplementary alignments.
+mergePair :: Fill -> [BamRow] -> Maybe BamRow
+mergePair fill xs =
+    case filter (not . isSupplementary) xs of
+        []  -> Nothing
+        [x] -> Just x
+        [BamRow left, BamRow right] ->
+            Just
+                . BamRow
+                . set (ix 9) ( unSequence
+                            $ mergeSequences fill (posSeq left) (posSeq right)
+                            )
+                $ left
+        xs -> error ("Too many mate pairs (even after supplementary removal) for: " <> show xs)
   where
     posSeq xs = ( either error (Position . fst) . T.decimal $ xs !! 3
                 , Sequence $ xs !! 9
                 )
-mergePair _ xs = error ("Too many mate pairs for: " <> show xs)
+    isSupplementary =
+        (== "1") . drop 11 . decodeSAMFlag . read . T.unpack . (!! 1) . unBamRow
 
 -- | Merge all mate pairs. Assumes that the lines are sorted by mate pair already
 -- (samtools sort -n).
 mergeMates :: Fill -> [BamRow] -> [BamRow]
-mergeMates fill = fmap (mergePair fill) . groupBy ((==) `on` (head . unBamRow))
+mergeMates fill =
+    catMaybes . fmap (mergePair fill) . groupBy ((==) `on` (head . unBamRow))
