@@ -98,7 +98,7 @@ mergePair fill [BamRow left, BamRow right] =
     posSeq xs = ( either error (Position . fst) . T.decimal $ xs !! 3
                 , Sequence $ xs !! 9
                 )
-mergeMate xs = error ("Too many mate pairs for: " <> show xs)
+mergePair _ xs = error ("Too many mate pairs for: " <> show xs)
 
 -- | Merge all mate pairs. Assumes that the lines are sorted by mate pair already
 -- (samtools sort -n).
