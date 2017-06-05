@@ -60,6 +60,12 @@ data Options = Options { input                 :: String
                        , refCheckBlacklistFlag :: Bool
                        , refRecBlacklistFlag   :: Bool
                        , minRichness           :: Int
+                       , inputColorDupL        :: String
+                       , inputColorDupR        :: String
+                       , inputColorMut         :: String
+                       , inputColorSpacer      :: String
+                       , inputColorBackground  :: String
+                       , inputColorForeground  :: String
                        , preprocessType        :: Preprocess
                        , blastCommand          :: Maybe String
                        , blastArgs             :: Maybe String
@@ -239,6 +245,43 @@ options = Options
                  \ nucleotides) allowed in the duplication to be considered\
                  \ real. Useful if the user knows that a sequence like\
                  \ \"TTTTTTTTCTTTTTTTTC\" is not likely to be real."
+          )
+      <*> O.strOption
+          ( O.long "color-left-duplication"
+         <> O.metavar "[#458588] | COLOR"
+         <> O.help "The color of the left side of the repeated sequence."
+         <> O.value "#458588"
+          )
+      <*> O.strOption
+          ( O.long "color-right-duplication"
+         <> O.metavar "[#b16286] | COLOR"
+         <> O.help "The color of the right side of the repeated sequence."
+         <> O.value "#b16286"
+          )
+      <*> O.strOption
+          ( O.long "color-difference"
+         <> O.metavar "[#cc241d] | COLOR"
+         <> O.help "The color of discrepancies between the left and right side of\
+                   \ the duplication."
+         <> O.value "#cc241d"
+          )
+      <*> O.strOption
+          ( O.long "color-spacer"
+         <> O.metavar "[#689d6a] | COLOR"
+         <> O.help "The color of the spacer."
+         <> O.value "#689d6a"
+          )
+      <*> O.strOption
+          ( O.long "color-background"
+         <> O.metavar "[#ebdbb2] | COLOR"
+         <> O.help "The color of the background."
+         <> O.value "#ebdbb2"
+          )
+      <*> O.strOption
+          ( O.long "color-foreground"
+         <> O.metavar "[#282828] | COLOR"
+         <> O.help "The color of the foreground."
+         <> O.value "#282828"
           )
       <*> O.option O.auto
           ( O.long "type"
@@ -470,6 +513,12 @@ runFindDuplication opts streamIn =
               . refRecBlacklistFlag
               $ opts
               , Just ["--min-richness", show . minRichness $ opts]
+              , Just ["--color-left-duplication", inputColorDupL $ opts]
+              , Just ["--color-right-duplication", inputColorDupR $ opts]
+              , Just ["--color-difference", inputColorMut $ opts]
+              , Just ["--color-spacer", inputColorSpacer $ opts]
+              , Just ["--color-background", inputColorBackground $ opts]
+              , Just ["--color-foreground", inputColorForeground $ opts]
               ]
 
 
