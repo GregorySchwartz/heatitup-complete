@@ -1,5 +1,5 @@
 name:                heatitup-complete
-version:             0.5.3.1
+version:             0.5.3.2
 synopsis:            Find and annotate ITDs with assembly or read pair joining.
 description:         Find and annotate ITDs with assembly or read pair joining using suffix trees and characterize the exogenous segments within the spacer using heat diffusion.
 homepage:            http://github.com/GregorySchwartz/heatitup-complete#readme

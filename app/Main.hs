@@ -131,7 +131,7 @@ options = Options
       <*> O.strOption
           ( O.long "label"
          <> O.short 'l'
-         <> O.metavar "FILE"
+         <> O.metavar "STRING"
          <> O.value ""
          <> O.help "The label to use in the label column for the output"
           )
