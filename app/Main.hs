@@ -1,8 +1,8 @@
-{- find-duplication-complete
+{- heatitup-complete
 Gregory W. Schwartz
 
 Find duplications a sequence with assembly. Requires all to be in path:
-find-duplication, Trinity, samtools (if input is a bam), rsem-prepare-reference,
+heatitup, Trinity, samtools (if input is a bam), rsem-prepare-reference,
 rsem-calculate-expression, and bowtie2. Cleans up at the end by deleting all
 files with INPUT.* pattern, the new period being the main difference.
 -}
@@ -485,7 +485,7 @@ runAlignContig opts tempDir trinityFastaFile = do
 -- | Find duplications in the Trinity output.
 runFindDuplication :: Options -> Shell Line -> Shell Line
 runFindDuplication opts streamIn =
-    inproc "find-duplication" commandList streamIn
+    inproc "heatitup" commandList streamIn
   where
     commandList =
         fmap T.pack
@@ -682,4 +682,4 @@ main = O.execParser opts >>= mainFunc
     opts = O.info (O.helper <*> Main.options)
       ( O.fullDesc
      <> O.progDesc "Finds duplications in a sequence with assembly"
-     <> O.header "find-duplication-complete, Gregory W. Schwartz" )
+     <> O.header "heatitup-complete, Gregory W. Schwartz" )
