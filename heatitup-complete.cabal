@@ -1,12 +1,12 @@
 name:                heatitup-complete
-version:             0.5.3.2
+version:             0.5.3.3
 synopsis:            Find and annotate ITDs with assembly or read pair joining.
 description:         Find and annotate ITDs with assembly or read pair joining using suffix trees and characterize the exogenous segments within the spacer using heat diffusion.
 homepage:            http://github.com/GregorySchwartz/heatitup-complete#readme
 license:             GPL-3
 license-file:        LICENSE
 author:              Gregory W. Schwartz
-maintainer:          gsch@mail.med.upenn.edu
+maintainer:          gsch@pennmedicine.upenn.edu
 copyright:           Copyright: (c) 2017 Gregory W. Schwartz
 category:            Bioinformatics
 build-type:          Simple

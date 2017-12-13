@@ -248,40 +248,40 @@ options = Options
           )
       <*> O.strOption
           ( O.long "color-left-duplication"
-         <> O.metavar "[#458588] | COLOR"
+         <> O.metavar "[#a6cae3] | COLOR"
          <> O.help "The color of the left side of the repeated sequence."
-         <> O.value "#458588"
+         <> O.value "#a6cae3"
           )
       <*> O.strOption
           ( O.long "color-right-duplication"
-         <> O.metavar "[#b16286] | COLOR"
+         <> O.metavar "[#b0de8a] | COLOR"
          <> O.help "The color of the right side of the repeated sequence."
-         <> O.value "#b16286"
+         <> O.value "#b0de8a"
           )
       <*> O.strOption
           ( O.long "color-difference"
-         <> O.metavar "[#cc241d] | COLOR"
+         <> O.metavar "[#1978b3] | COLOR"
          <> O.help "The color of discrepancies between the left and right side of\
                    \ the duplication."
-         <> O.value "#cc241d"
+         <> O.value "#1978b3"
           )
       <*> O.strOption
           ( O.long "color-spacer"
-         <> O.metavar "[#689d6a] | COLOR"
-         <> O.help "The color of the spacer."
-         <> O.value "#689d6a"
+         <> O.metavar "[#fdbd6e] | COLOR"
+         <> O.help "The color of the exogenous nucleotides within the spacer."
+         <> O.value "#fdbd6e"
           )
       <*> O.strOption
           ( O.long "color-background"
-         <> O.metavar "[#ebdbb2] | COLOR"
+         <> O.metavar "[#ffffff] | COLOR"
          <> O.help "The color of the background."
-         <> O.value "#ebdbb2"
+         <> O.value "#ffffff"
           )
       <*> O.strOption
           ( O.long "color-foreground"
-         <> O.metavar "[#282828] | COLOR"
+         <> O.metavar "[#000000] | COLOR"
          <> O.help "The color of the foreground."
-         <> O.value "#282828"
+         <> O.value "#000000"
           )
       <*> O.option O.auto
           ( O.long "type"
