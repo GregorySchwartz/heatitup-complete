@@ -1,0 +1,264 @@
+* =heatitup-complete=
+
+** Description
+
+=heatitup-complete= uses =heatitup= to look at sequences (=BAM= file input) to
+find and annotate the longest repeated substring as well as characterize the
+substring separating the repeated substring.
+
+** Installation
+
+*** Install =stack=
+
+See [[https://docs.haskellstack.org/en/stable/README/]] for more details.
+
+#+BEGIN_SRC sh
+curl -sSL https://get.haskellstack.org/ | sh
+stack setup
+#+END_SRC
+
+*** Install =heatitup-complete=
+
+Requires =heatitup= to be installed an in path.
+
+**** Online
+
+#+BEGIN_SRC sh
+stack install heatitup-complete
+#+END_SRC
+
+**** Source
+
+#+BEGIN_SRC sh
+stack install
+#+END_SRC
+
+** Usage
+
+=heatitup-complete= builds off of =heatitup=, so many options are the same.
+However, a key difference is that =heatitup-complete= takes =BAM= files as input.
+
+Say we have a file, =SAMPLE01.bam=, containing our reads. The following two
+files are optional, but the next file is required to characterize the spacer: we
+have a file =reference.fa= containing our reference sequence:
+
+#+BEGIN_EXAMPLE
+>REFERENCE
+ATTTATCCATGTATGTGACGGGGGCTATATAGCTATTATTTTTGCATAT...
+#+END_EXAMPLE
+
+We also have a list of sequences in =blacklist.fa= that we know are not
+duplications:
+
+#+BEGIN_EXAMPLE
+>blacklist1
+AATCCAAT
+>blacklist2
+AATGGGCG
+>blacklist3
+TTAAACCCACTGGGAT
+#+END_EXAMPLE
+
+Then we can find and classify and characterize our duplications:
+
+#+BEGIN_SRC sh
+heatitup-complete \
+    --input SAMPLE01.bam \ # The input bam.
+    --spacer \ # We supplied a reference so we can characterize the spacer.
+    --label "sample1" \ # A label to give for each entry in the output, useful when stacking output.
+    --min-size 7 \ # The minimum size of the duplication to report.
+    --min-mutations 5 \ # The minimum number of nucleotides between point mutations.
+    --reference-input reference.fa \ # The reference fasta file.
+    --blacklist-input blacklist.fa \ # The blacklist fasta file.
+    --reference-check-blacklist \ # Whether to use the reference as a blacklist in addition to the normal blacklist. Do not include duplications found twice or more in the reference sequence.
+    --header "REFERENCE" \ # Additional header added when converting from bam to fasta. The converted order is ">FILE|ACCESSION|POSITION|IGNORE|HEADER", so the header here appears in field 5, so we can use field 5 as the reference.
+    --reference-field 5 \ # When converting from a bam to a fasta file, additional fields are added as seen in the --header argument. Based on our input, we know the header will be in this field.
+    --ignore-field 4 \ # Where the ignore field is located in our converted fasta header as seen in the --header argument. Ignores reads based on the CIGAR.
+    --position-field 3 \ # As with the other field arguments, this field is based on the order in the --header argument. By default, the third field is the position based on the alignment from the bam file.
+    --min-richness 3 \ # The minimum richness (number of different types of nucleotides here) required for a duplication (if we know that TTTTTTTTT would not be a duplication).
+    --type "NonAssembly 'X'" \ # Here, we just want to combine paired reads with an X character.
+#+END_SRC
+
+** Documentation
+
+#+BEGIN_EXAMPLE
+heatitup-complete, Gregory W. Schwartz
+
+Usage: heatitup-complete (-i|--input FILE) [-s|--spacer]
+                         [-I|--reference-input [Nothing] | FILE]
+                         [-b|--blacklist-input [Nothing] | FILE]
+                         [-o|--output FILE] [-O|--output-plot FILE]
+                         [-l|--label STRING] [-f|--reference-field [1] | INT]
+                         [-p|--position-field [Nothing] | INT]
+                         [-g|--ignore-field [Nothing] | INT]
+                         [-s|--min-size [15] | INT]
+                         [-w|--gaussian-window [4] | Double]
+                         [-t|--gaussian-time [2] | Double]
+                         [-T|--gaussian-threshold [0.4] | Double]
+                         [-m|--min-mutations INT]
+                         [-L|--levenshtein-distance [2] | INT]
+                         [-c|--reference-check-blacklist]
+                         [-r|--reference-recursive-blacklist]
+                         [-R|--min-richness [1] | INT]
+                         [--color-left-duplication [#a6cae3] | COLOR]
+                         [--color-right-duplication [#b0de8a] | COLOR]
+                         [--color-difference [#1978b3] | COLOR]
+                         [--color-spacer [#fdbd6e] | COLOR]
+                         [--color-background [#ffffff] | COLOR]
+                         [--color-foreground [#000000] | COLOR]
+                         (-P|--type Assembly | NonAssembly CHAR)
+                         [-B|--blast-command [Nothing] | PATH]
+                         [-z|--blast-args [Nothing] | STRING]
+                         [-C|--trinity-command [Trinity] | PATH]
+                         [-A|--trinity-args [TrinityBase] | TrinityGenome | TrinityCustom STRING]
+                         [-a|--trinity-abundance [align_and_estimate_abundance.pl] | PATH]
+                         [-d|--dirty] [-G|--cigar-filter]
+                         [-H|--header [Nothing] | STRING]
+  Finds duplications in a sequence with assembly
+
+Available options:
+  -h,--help                Show this help text
+  -i,--input FILE          The input file
+  -s,--spacer              Whether to characterize the spacer. Requires
+                           reference-input and matching labels for the input and
+                           reference-input to compare.
+  -I,--reference-input [Nothing] | FILE
+                           The input file containing the reference sequences to
+                           compare to. The first entry in the field must be the
+                           accession and match the requested field from
+                           reference-field for the input. With no supplied file,
+                           no spacer will be annotated.
+  -b,--blacklist-input [Nothing] | FILE
+                           The input fasta file containing possible false
+                           positives -- sequences which may be duplicate
+                           nucleotides in the reference sequence.
+  -o,--output FILE         The output file
+  -O,--output-plot FILE    The output file for the plot. Each new plot gets a
+                           new number on it: output_1.svg, output_2.svg, etc.
+                           Each plot uses the first entry in the fasta header as
+                           the label.
+  -l,--label STRING        The label to use in the label column for the output
+  -f,--reference-field [1] | INT
+                           The field in each input header that contains the
+                           reference accession number to compare to. Results in
+                           an out of bounds if this field does not exist.
+  -p,--position-field [Nothing] | INT
+                           The field in each input header that contains the
+                           starting position of the read. Added to the
+                           annotations. Results in out of bounds if this field
+                           does not exist.
+  -g,--ignore-field [Nothing] | INT
+                           The field in each input header that contains a 0 or a
+                           1: 0 means to ignore this read (assign as Normal) and
+                           1 means to find a duplication in this read. Used for
+                           reads where there is known to be no duplication and
+                           thus helps remove false positives.
+  -s,--min-size [15] | INT The minimum size of a duplication
+  -w,--gaussian-window [4] | Double
+                           The window for the discrete gaussian kernel atypical
+                           spacer determination
+  -t,--gaussian-time [2] | Double
+                           The time for the discrete gaussian kernel atypical
+                           spacer determination
+  -T,--gaussian-threshold [0.4] | Double
+                           The cutoff to be considered a mutation for the
+                           discrete gaussian kernel atypical spacer
+                           determination
+  -m,--min-mutations INT   The minimum number of nucleotides between mutations
+  -L,--levenshtein-distance [2] | INT
+                           The minimum Levenshtein distance to the false
+                           positive checker. If the distance to the false
+                           positive string is less than or equal to this number,
+                           the duplication is considered a false positive.
+                           Compares candidates against each sequence in
+                           --blacklist-input
+  -c,--reference-check-blacklist
+                           Whether to use the reference as a blacklist in
+                           addition to the supplied blacklist. That is, we check
+                           if the duplication can be found twice or more in the
+                           reference input.
+  -r,--reference-recursive-blacklist
+                           Whether to use the reference as a recursive blacklist
+                           in addition to the supplied blacklist. That is, the
+                           reference sequences are inputed with the same
+                           parameters (except distance, which here is 0) to the
+                           duplication finder, and those duplications found are
+                           added to the blacklist. This process is recursive,
+                           executed until no more duplications are found in the
+                           reference. Beware, too many blacklist entries can
+                           slow down the finder significantly, as each blacklist
+                           entry is compared with each candidate.
+  -R,--min-richness [1] | INT
+                           The minimum nucleotide richness (number of different
+                           types of nucleotides) allowed in the duplication to
+                           be considered real. Useful if the user knows that a
+                           sequence like "TTTTTTTTCTTTTTTTTC" is not likely to
+                           be real.
+  --color-left-duplication [#a6cae3] | COLOR
+                           The color of the left side of the repeated sequence.
+  --color-right-duplication [#b0de8a] | COLOR
+                           The color of the right side of the repeated sequence.
+  --color-difference [#1978b3] | COLOR
+                           The color of discrepancies between the left and right
+                           side of the duplication.
+  --color-spacer [#fdbd6e] | COLOR
+                           The color of the exogenous nucleotides within the
+                           spacer.
+  --color-background [#ffffff] | COLOR
+                           The color of the background.
+  --color-foreground [#000000] | COLOR
+                           The color of the foreground.
+  -P,--type Assembly | NonAssembly CHAR
+                           The type of preprocessing before duplication finding.
+                           Assembly would be used on exome sequencing, RNA-seq,
+                           etc. while NonAssembly would be for certain paired
+                           end sequencing like amplicon based. Basically, are
+                           the reads fragmented across a location (Assembly) or
+                           are they all piled up (NonAssembly)? Paired end is
+                           required for NonAssembly, otherwise just use the
+                           duplication finding program directly on the reads for
+                           best results. NonAssembly additionally requires a
+                           character to use as filler between non-overlapping
+                           mate pairs, as the program will remove duplications
+                           containing that character. Input would look like
+                           "NonAssembly 'X'".
+  -B,--blast-command [Nothing] | PATH
+                           The command used for blastn. Useful if not in path.
+                           Used for filtering out reads from irrelevant
+                           locations. If using small sequences, be sure to set
+                           blast-args to "-task blastn-short".
+  -z,--blast-args [Nothing] | STRING
+                           The additional arguments used for blastn. Separated
+                           by space. Use "-task blastn-short" for small
+                           sequences.
+  -C,--trinity-command [Trinity] | PATH
+                           The command used for Trinity. Useful if not in path.
+  -A,--trinity-args [TrinityBase] | TrinityGenome | TrinityCustom STRING
+                           The arguments used for Trinity. TrinityBase is
+                           --seqType fq --run_as_paired --max_memory 10G
+                           --no_version_check --single, TrinityGenome is
+                           --genome_guided_max_intron 10000 --max_memory 10G
+                           --no_version_check --genome_guided_bam, and
+                           TrinityCustom STRING is STRING. Make sure the input
+                           argument is last and points to nothing (like in the
+                           default).
+  -a,--trinity-abundance [align_and_estimate_abundance.pl] | PATH
+                           The command used for align_and_estimate_abundance.pl
+                           in Trinity's util folder. Useful if not in path. Make
+                           sure kallisto is in the path.
+  -d,--dirty               Leave behind the INPUT.* files at the end (but the
+                           trinity output is still deleted).
+  -G,--cigar-filter        Skip the CIGAR based filtering, that is, look at all
+                           reads and not just reads without all M's in the
+                           CIGAR.
+  -H,--header [Nothing] | STRING
+                           The headers used when converting bam to fasta. The
+                           order in the resulting header is
+                           ">FILE|ACCESSION|POSITION|IGNORE|HEADER". So take
+                           that order into account for field options with
+                           positions and the rest. Also, make sure this string
+                           has fields separated by a pipe "|" character. So if
+                           you have HEADER as the "ENSE00000SOMETHING" reference
+                           accession that agrees with --input-reference, that
+                           would be field 5.
+#+END_EXAMPLE
