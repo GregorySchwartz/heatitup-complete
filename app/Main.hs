@@ -353,7 +353,7 @@ options = Options
                    \ output is still deleted)."
           )
       <*> O.switch
-          ( O.long "cigar-filter"
+          ( O.long "no-cigar-filter"
          <> O.short 'G'
          <> O.help "Skip the CIGAR based filtering, that is, look at all reads\
                    \ and not just reads without all M's in the CIGAR."
