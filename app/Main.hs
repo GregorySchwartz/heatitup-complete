@@ -15,6 +15,7 @@ module Main where
 -- Standard
 import Data.Bool
 import Data.Maybe
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
@@ -414,7 +415,7 @@ runSamtools opts tempFasta = do
                         Turtle.output tempFasta
                             . inproc "samtools" [outputType, inputFile]
                             $ mempty
-                        return . head . textToLines . format fp $ tempFasta
+                        return . NE.head . textToLines . format fp $ tempFasta
                     else
                         return inputFile
 
@@ -470,7 +471,7 @@ runAlignContig opts tempDir trinityFastaFile = do
     let matchMap = getMatchMap bamRows
 
     select
-        . concatMap textToLines
+        . concatMap (NE.toList . textToLines)
         . concat
         . nub'
         . fmap
@@ -631,7 +632,7 @@ nonAssembly opts fill = sh $ do
     let bamRows' = parseBAM bamOutput
         query    = QueryShell
                  . select
-                 . concatMap textToLines
+                 . concatMap (NE.toList . textToLines)
                  . concatMap blastBamToFasta
                  $ bamRows'
 
@@ -654,7 +655,7 @@ nonAssembly opts fill = sh $ do
 
     let mergedMates = mergeMates fill bamRows
         fastaOutput = select
-                    . concatMap textToLines
+                    . concatMap (NE.toList . textToLines)
                     . concatMap ( bamToFasta
                                     Nothing
                                     Nothing
