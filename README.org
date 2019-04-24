@@ -6,6 +6,16 @@
 find and annotate the longest repeated substring as well as characterize the
 substring separating the repeated substring.
 
+There are three related tools for this program:
+
+- [[https://github.com/GregorySchwartz/heatitup][ =heatitup= ]] to categorize longest repeated substrings along with
+  characterizing the "spacer" in-between substrings.
+- [[https://github.com/GregorySchwartz/heatitup-complete][ =heatitup-complete= ]]
+  to apply =heatitup= to =BAM= files along with additional options for
+  preprocessing.
+- [[https://github.com/GregorySchwartz/collapse-duplication][ =collapse-duplication= ]] to collapse annotated reads found by =heatitup= into
+  clones with associated frequencies.
+
 ** Installation
 
 *** Install =stack=
