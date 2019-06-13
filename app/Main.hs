@@ -31,6 +31,7 @@ import qualified Data.Csv as CSV
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Options.Applicative as O
+import Safe (headMay)
 import Turtle
 import Turtle.Line
 
@@ -52,6 +53,7 @@ data Options = Options { input                 :: String
                        , refField              :: Int
                        , posField              :: Maybe Int
                        , ignoreField           :: Maybe Int
+                       , ignoreChar            :: Maybe String
                        , inputMinSize          :: Int
                        , gaussWindow           :: Int
                        , gaussTime             :: Double
@@ -163,6 +165,13 @@ options = Options
                    \ means to find a duplication in this read.\
                    \ Used for reads where there is known to be no duplication\
                    \ and thus helps remove false positives."
+          )
+        )
+      <*> O.optional ( O.strOption
+          ( O.long "ignore-char"
+         <> O.metavar "[Nothing or NonAssembly CHAR] | CHAR"
+         <> O.help "Character to ignore, useful for gaps.\
+                   \ Defaults to nothing or the character used in NonAssembly."
           )
         )
       <*> O.option O.auto
@@ -488,6 +497,17 @@ runFindDuplication :: Options -> Shell Line -> Shell Line
 runFindDuplication opts streamIn =
     inproc "heatitup" commandList streamIn
   where
+    ignoreCharArg (NonAssembly c) = Just
+                                  . ("--ignore-char" :)
+                                  . (\x -> [[x]])
+                                  . fromMaybe c
+                                  . (=<<) headMay
+                                  . ignoreChar
+                                  $ opts
+    ignoreCharArg _ = fmap (("--ignore-char" :) . (\x -> [[x]]))
+                    . (=<<) headMay
+                    . ignoreChar
+                    $ opts
     commandList =
         fmap T.pack
             . concat
@@ -501,6 +521,7 @@ runFindDuplication opts streamIn =
               , Just ["--reference-field", show . refField $ opts]
               , fmap (("--position-field" :) . (:[]) . show) . posField $ opts
               , fmap (("--ignore-field" :) . (:[]) . show) . ignoreField $ opts
+              , ignoreCharArg $ preprocessType opts
               , Just ["--min-size", show . inputMinSize $ opts]
               , Just ["--gaussian-window", show . gaussWindow $ opts]
               , Just ["--gaussian-time", show . gaussTime $ opts]
