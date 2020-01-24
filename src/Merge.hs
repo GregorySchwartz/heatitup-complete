@@ -104,7 +104,7 @@ mergePair fill xs =
                 , Sequence $ xs !! 9
                 )
     isSupplementary =
-        (== "1") . drop 11 . decodeSAMFlag . read . T.unpack . (!! 1) . unBamRow
+        (== "1") . take 1 . drop 11 . decodeSAMFlag . read . T.unpack . (!! 1) . unBamRow
 
 -- | Merge all mate pairs. Assumes that the lines are sorted by mate pair already
 -- (samtools sort -n).
