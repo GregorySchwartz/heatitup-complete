@@ -23,6 +23,7 @@ import qualified Data.Map.Strict as Map
 
 -- Cabal
 import Control.Lens
+import qualified Data.Fasta.Text as F
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
 import Safe
@@ -101,8 +102,12 @@ mergePair fill xs =
         xs -> error ("Too many mate pairs (even after supplementary removal) for: " <> show xs)
   where
     posSeq xs = ( either error (Position . fst) . T.decimal $ xs !! 3
-                , Sequence $ xs !! 9
+                , Sequence . revComplCheck (BamRow xs) $ xs !! 9
                 )
+    revComplCheck row fSeq =
+      if checkSamFlag 16 row
+        then (F.fastaSeq . F.revCompl $ F.FastaSequence "" fSeq)
+        else fSeq
     valid x = not (checkSamFlag 2048 x) && not (checkSamFlag 256 x)  -- Make sure not supplementary nor not primary
 
 -- | Merge all mate pairs. Assumes that the lines are sorted by mate pair already
