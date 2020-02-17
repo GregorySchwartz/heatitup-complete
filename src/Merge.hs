@@ -88,7 +88,7 @@ mergeSequences fill left =
 -- supplementary alignments.
 mergePair :: Fill -> [BamRow] -> Maybe BamRow
 mergePair fill xs =
-    case filter (not . isSupplementary) xs of
+    case filter valid xs of
         []  -> Nothing
         [x] -> Just x
         [BamRow left, BamRow right] ->
@@ -103,8 +103,7 @@ mergePair fill xs =
     posSeq xs = ( either error (Position . fst) . T.decimal $ xs !! 3
                 , Sequence $ xs !! 9
                 )
-    isSupplementary =
-        (== "1") . take 1 . drop 11 . decodeSAMFlag . read . T.unpack . (!! 1) . unBamRow
+    valid x = not (checkSamFlag 2048 x) && not (checkSamFlag 256 x)  -- Make sure not supplementary nor not primary
 
 -- | Merge all mate pairs. Assumes that the lines are sorted by mate pair already
 -- (samtools sort -n).

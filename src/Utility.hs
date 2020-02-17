@@ -15,15 +15,15 @@ module Utility
     , fastaToMap
     , getMatchMap
     , nub'
-    , decodeSAMFlag
+    , checkSamFlag
     ) where
 
 -- Standard
+import Data.Bits ((.&.))
 import Data.Bool
 import Data.Char
 import Data.Maybe
 import Data.Monoid
-import Numeric
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -31,6 +31,7 @@ import qualified Data.Set as Set
 -- Cabal
 import qualified Control.Foldl as Fold
 import qualified Data.Text as T
+import qualified Data.Text.Read as T
 import Data.Fasta.Text
 import Safe
 import Turtle.Line
@@ -100,6 +101,11 @@ lookupErr k = fromMaybe (error $ "Cannot find: " <> (show k)) . Map.lookup k
 nub' :: (Eq a, Ord a) => [a] -> [a]
 nub' = Set.toList . Set.fromList
 
--- | Decode a SAM flag into the bit representation (as a string).
-decodeSAMFlag :: Int -> String
-decodeSAMFlag x = showIntAtBase 2 intToDigit x ""
+-- | Decode a SAM flag to check a property of the read.
+checkSamFlag :: Int -> BamRow -> Bool
+checkSamFlag property = (== property)
+                      . (.&.) property
+                      . either error fst
+                      . T.decimal
+                      . (!! 1)
+                      . unBamRow
